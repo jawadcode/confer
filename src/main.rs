@@ -39,6 +39,9 @@ fn main() {
     let mut engine = Engine::new(env);
     let ty = engine.infer(&test);
     println!("{test}");
-    println!("Type:\n{ty}");
+    println!("\nUnsolved type:\n{ty}");
     engine.print_constraints();
+    engine.solve_constraints();
+    engine.print_subst();
+    println!("\nSolved type:\n{}", engine.substitute(ty));
 }

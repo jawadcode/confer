@@ -1,6 +1,6 @@
 use std::{
     collections::HashMap,
-    fmt::{self, Display, Write},
+    fmt::{self, Display},
 };
 
 use crate::expr::Expr;
@@ -42,7 +42,7 @@ impl Display for Type {
 
 /// The type inference engine
 pub struct Engine {
-    /// The set of mappings from type variables (represented by `usize`) and `Type`s
+    /// The substitution (set of mappings) from type variables (represented by `usize`) to `Type`s
     subst: Vec<Type>,
     /// The set of relationships between the `Type`s
     constraints: Vec<Constraint>,
@@ -120,10 +120,10 @@ impl Engine {
              */
             Expr::Abs(arg, body) => {
                 let arg_ty = self.new_tyvar();
-                self.push_scope();
+                self.new_scope();
                 self.extend(arg, &arg_ty);
                 let body_ty = self.infer(body);
-                self.pop_scope();
+                self.exit_scope();
                 // `Fun[arg_ty, body_ty]` aka `arg_ty -> body_ty`
                 Type::Con {
                     name: "Fun".to_string(),
@@ -150,10 +150,76 @@ impl Engine {
         match (t1, t2) {
             // If the IDs of 2 type variables are equal then they are already unified
             (Type::Var(x), Type::Var(y)) if x == y => (),
-            _ => todo!("Add other 2 cases"),
+            (Type::Var(x_id), y) | (y, Type::Var(x_id)) => {
+                // Get x's mapping from the substitution
+                let map = self.subst[*x_id].clone();
+                // If the mapping is simply to itself, check that x doesn't occur in y, then update the mapping to x ↦ y,
+                if map == Type::Var(*x_id) {
+                    assert!(!self.occurs_in(*x_id, y));
+                    self.subst[*x_id] = y.clone();
+                } else {
+                    // otherwise, unify the type x maps to with y
+                    self.unify(&map, y);
+                }
+            }
+            (
+                Type::Con {
+                    name: x_name,
+                    args: x_args,
+                },
+                Type::Con {
+                    name: y_name,
+                    args: y_args,
+                },
+            ) => {
+                // Compare the equality of two type constructors by:
+                // * Unifying the type arguments
+                assert_eq!(x_name, y_name);
+                // * Checking the arity
+                assert_eq!(x_args.len(), y_args.len());
+                // * Checking the names
+                for (t1, t2) in x_args.iter().zip(y_args) {
+                    self.unify(t1, t2);
+                }
+            }
         }
     }
 
+    /// Checks if the `Type` mapped to by `index` in the substitution occurs in `ty`
+    fn occurs_in(&self, index: usize, ty: &Type) -> bool {
+        match ty {
+            // Check if the type appears in any of the type arguments of `ty`
+            Type::Con { name: _, args } => args.iter().any(|ty| self.occurs_in(index, ty)),
+            Type::Var(id) => {
+                // Get the `Type` mapped to by `id`
+                let map = self.subst[*id].clone();
+                // If the type mapped to is just a typevar of `index`, return true
+                if map == Type::Var(index) {
+                    true
+                } else {
+                    // otherwise check if the `Type` referred to by `index` occurs in the mapped to `Type`
+                    self.occurs_in(index, &map)
+                }
+            }
+        }
+    }
+
+    /// Apply `self.subst` to `ty`, returning the mapped `Type`
+    pub fn substitute(&self, ty: Type) -> Type {
+        match ty {
+            // If the type variable doesn't map to itself, then follow the chain of type variables
+            Type::Var(x) if self.subst[x] != Type::Var(x) => self.substitute(self.subst[x].clone()),
+            // Apply the substitution to all of the type arguments
+            Type::Con { name, args } => Type::Con {
+                name,
+                args: args.into_iter().map(|ty| self.substitute(ty)).collect(),
+            },
+            // There is no change incurred by the substitution
+            t => t,
+        }
+    }
+
+    // Get a variable by `name` from `self.env` starting from the innermost scope
     fn get_var(&self, name: &str) -> Option<Type> {
         for env in self.env.iter().rev() {
             match env.get(name) {
@@ -165,6 +231,23 @@ impl Engine {
         None
     }
 
+    /// Print all of the current constraints separated by new lines
+    pub fn print_constraints(&self) {
+        println!("\nConstraints:");
+        for constraint in self.constraints.iter() {
+            println!("{constraint}");
+        }
+    }
+
+    /// Print the current substitution separated by new lines
+    pub fn print_subst(&self) {
+        println!("\nSubstitution:");
+        for (index, map) in self.subst.iter().enumerate() {
+            println!("t{index} ↦ {map}");
+        }
+    }
+
+    /// Extend the last scope on the `self.env` stack with `(name, ty)`
     fn extend(&mut self, name: &str, ty: &Type) {
         self.env
             .last_mut()
@@ -172,11 +255,13 @@ impl Engine {
             .insert(name.to_string(), ty.clone());
     }
 
-    fn push_scope(&mut self) {
+    /// Enter a new scope
+    fn new_scope(&mut self) {
         self.env.push(HashMap::new());
     }
 
-    fn pop_scope(&mut self) {
+    /// Exit the innermost scope by popping it from the `self.env` stack
+    fn exit_scope(&mut self) {
         self.env.pop();
     }
 
@@ -185,12 +270,5 @@ impl Engine {
         let tyvar = Type::Var(self.subst.len());
         self.subst.push(tyvar.clone());
         tyvar
-    }
-
-    pub fn print_constraints(&self) {
-        println!("Constraints:");
-        for constraint in self.constraints.iter() {
-            println!("{constraint}");
-        }
     }
 }
