@@ -1,13 +1,21 @@
-use std::collections::HashMap;
+use std::{
+    collections::HashMap,
+    io::{self, Write},
+};
 
 use expr::Expr;
 
-use crate::infer::{Engine, Type};
+use crate::{
+    infer::{Engine, Type},
+    parser::Parser,
+};
 
 mod expr;
 mod infer;
+mod lexer;
+mod parser;
 
-fn main() {
+fn main1() {
     let test = Expr::App(
         Box::new(Expr::Abs(
             "x".to_string(),
@@ -44,4 +52,21 @@ fn main() {
     engine.solve_constraints();
     engine.print_subst();
     println!("\nSolved type:\n{}", engine.substitute(ty));
+}
+
+fn main() {
+    repl()
+}
+
+fn repl() {
+    loop {
+        let mut input = String::new();
+        print!("$ ");
+        io::stdout().flush().unwrap();
+        io::stdin().read_line(&mut input).unwrap();
+        match Parser::new(&input).parse() {
+            Ok(ast) => println!("{ast}"),
+            Err(err) => eprintln!("{err}"),
+        }
+    }
 }

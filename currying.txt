@@ -1,0 +1,5 @@
+fun f g x => g (f x)
+args: f g z
+fun f =>
+	fun g =>
+		fun x => g (f x)
