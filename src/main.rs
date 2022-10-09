@@ -15,15 +15,7 @@ mod infer;
 mod lexer;
 mod parser;
 
-fn main1() {
-    let test = Expr::App(
-        Box::new(Expr::Abs(
-            "x".to_string(),
-            Box::new(Expr::Var("x".to_string())),
-        )),
-        Box::new(Expr::Var("1".to_string())),
-    );
-
+fn main() {
     let int = Type::Con {
         name: "Int".to_string(),
         args: vec![],
@@ -34,9 +26,9 @@ fn main1() {
     };
 
     let env = [
-        ("1", int.clone()),
-        ("2", int.clone()),
-        ("3", int.clone()),
+        ("one", int.clone()),
+        ("two", int.clone()),
+        ("three", int.clone()),
         ("true", boolean.clone()),
         ("false", boolean.clone()),
     ]
@@ -44,29 +36,30 @@ fn main1() {
     .map(|(name, ty)| (name.to_string(), ty))
     .collect::<HashMap<_, _>>();
 
-    let mut engine = Engine::new(env);
-    let ty = engine.infer(&test);
-    println!("{test}");
-    println!("\nUnsolved type:\n{ty}");
-    engine.print_constraints();
-    engine.solve_constraints();
-    engine.print_subst();
-    println!("\nSolved type:\n{}", engine.substitute(ty));
+    repl(env);
 }
 
-fn main() {
-    repl()
-}
-
-fn repl() {
+fn repl(env: HashMap<String, Type>) {
     loop {
         let mut input = String::new();
         print!("$ ");
         io::stdout().flush().unwrap();
         io::stdin().read_line(&mut input).unwrap();
-        match Parser::new(&input).parse() {
-            Ok(ast) => println!("{ast}"),
-            Err(err) => eprintln!("{err}"),
-        }
+        let ast = match Parser::new(&input).parse() {
+            Ok(ast) => ast,
+            Err(err) => {
+                eprintln!("{err}");
+                continue;
+            }
+        };
+
+        let mut engine = Engine::new(env.clone());
+        let ty = engine.infer(&ast);
+        println!("{ast}");
+        println!("\nUnsolved type:\n{ty}");
+        engine.print_constraints();
+        engine.solve_constraints();
+        engine.print_subst();
+        println!("\nSolved type:\n{}", engine.substitute(ty));
     }
 }

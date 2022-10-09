@@ -13,6 +13,7 @@ pub struct Parser<'source> {
     lexer: Peekable<Lexer<'source>>,
 }
 
+#[derive(Debug)]
 pub enum SyntaxError {
     UnexpectedEof,
     ExpectedGot(String, TK),
@@ -40,22 +41,22 @@ impl<'source> Parser<'source> {
     }
 
     pub fn parse(&mut self) -> ParserResult<Expr> {
-        let mut lhs = self.parse()?;
+        let mut lhs = self.parse_basic()?;
+
+        while [TK::Ident, TK::Fun, TK::LParen].contains(&self.peek()) {
+            lhs = Expr::App(Box::new(lhs), self.parse_basic().map(Box::new)?);
+        }
+
+        Ok(lhs)
     }
 
-    pub fn parse_basic(&mut self) -> ParserResult<Expr> {
-        let mut lhs = match self.peek() {
+    fn parse_basic(&mut self) -> ParserResult<Expr> {
+        match self.peek() {
             TK::Ident => self.parse_ident(),
             TK::Fun => self.parse_abs(),
             TK::LParen => self.parse_grouping(),
             tok => return Err(SyntaxError::ExpectedGot("expression".to_string(), tok)),
-        }?;
-
-        if [TK::Ident, TK::Fun, TK::LParen].contains(&self.peek()) {
-            lhs = Expr::App(Box::new(lhs), self.parse().map(Box::new)?);
         }
-
-        Ok(lhs)
     }
 
     fn parse_ident(&mut self) -> ParserResult<Expr> {
